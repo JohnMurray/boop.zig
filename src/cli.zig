@@ -17,6 +17,7 @@ pub fn readArg(alloc: Allocator) !?ArrayList(u8) {
     return arg;
 }
 
+/// A simple argument reader to
 pub const ArgReader = struct {
     allocator: Allocator,
     args: ?[][:0]u8 = null,
@@ -130,6 +131,22 @@ test "multiple attempts to read past the end" {
     try t.expectEqual(null, reader.next());
 }
 
+test "it's an iterator too!" {
+    const arg_str = "arg1\x00arg2\x00arg3\x00";
+    const data = try _test_input_args(arg_str);
+    var reader = ArgReader{
+        .allocator = t.allocator,
+        .args = data,
+        .current = 0,
+    };
+    var i: u8 = 1;
+    while (reader.next()) |arg| {
+        const buf = "arg" ++ [_]u8{i + 48};
+        try t.expectEqualStrings(buf, arg);
+        i += 1;
+    }
+}
+
 fn _test_input_args(input: []const u8) ![][:0]u8 {
     _ = &input;
     // Leak the memory for the args (okay for testing)
@@ -138,7 +155,6 @@ fn _test_input_args(input: []const u8) ![][:0]u8 {
     var prev: usize = 0;
     for (input, 0..) |c, i| {
         if (c == 0 and i > prev) {
-            std.debug.print("{d} {d}\n", .{ prev, i });
             try out.append(@constCast(input[prev..i :0]));
             prev = i + 1;
         }
