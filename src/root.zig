@@ -1,3 +1,4 @@
+pub const cli = @import("cli.zig");
 pub const fs = @import("file_system.zig");
 
 // Current hack to run all tests on all imports
