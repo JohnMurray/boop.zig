@@ -1,69 +1,152 @@
 const std = @import("std");
+const t = std.testing;
 const Allocator = std.mem.Allocator;
 const ArrayList = std.ArrayList;
 
-/// Reads the first (non-program) argument and returns it as a ArrayList of u8.
-/// Caller must free the memory when done with the ArrayList
-pub fn readArg(alloc: Allocator) !?ArrayList(u8) {
-    const args = try std.process.argsAlloc(alloc);
-    defer std.process.argsFree(alloc, args);
-    if (args.len < 2) {
-        return null;
-    }
-
-    var arg = ArrayList(u8).init(std.heap.page_allocator);
-    try arg.appendSlice(args[1]);
-
-    return arg;
-}
-
 pub const ArgParser = struct {
     allocator: Allocator,
-    options: ArrayList(option(undefined)) = undefined,
+
+    option_i32: ArrayList(option(i32)) = undefined,
+    option_bool: ArrayList(option(bool)) = undefined,
+
+    reader: ?ArgReader = null,
 
     // Add a flag to the parser. 'T' is used to determine the type of the flag and there are only certain supported
     // types. A destination must be provided to store the value of the flag. Strings aren't supported here. Use the
     // 'addStringFlag' method instead.
-    pub fn addFlag(self: *ArgParser, comptime T: type, short: []const u8, long: []const u8, description: []const u8, destination: ?*T) !void {
-        // _ = self;
-        _ = short;
-        _ = long;
-        _ = description;
-        // _ = destination;
-        var op = comptime {
-            if (@TypeOf(T) == i32) {
-                // do something
-                option(i32){
-                    .allocator = self.allocator,
-                    .receiver = destination.?,
-                };
-            } else {
-                // do something else
-            }
+    pub fn addFlag(self: *ArgParser, comptime T: type, short: []const u8, long: []const u8, description: []const u8, destination: *T) !void {
+        var op = option(T){
+            .allocator = self.allocator,
+            .receiver = destination,
         };
-        _ = &op;
+        try op.with_long_name(long);
+        try op.with_short_name(short);
+        try op.with_description(description);
+
+        if (T == i32) {
+            try self.option_i32.append(op);
+        } else if (T == bool) {
+            try self.option_bool.append(op);
+        } else {
+            // unsupported type
+            @compileError("Unsupported option type " ++ @typeName(T));
+        }
     }
 
     // pub fn addStringFlag
 
     pub fn parse(self: *ArgParser) !void {
-        var reader = ArgReader.init(self.allocator);
-        defer reader.deinit();
+        if (self.reader == null) {
+            self.reader = ArgReader.init(self.allocator);
+        }
 
         // TODO: iterate over the reader and parse the arguments
-        try reader.read();
+        try self.reader.?.read();
+        while (self.reader.?.peek() != null) {
+            if (try self.tryParseOption(i32) or try self.tryParseOption(bool)) {
+                // we've parsed an option, continue to the next argument
+                _ = self.reader.?.next();
+                continue;
+            } else {
+                // we've found a non-option argument, we're done
+                break;
+            }
+        }
+    }
+
+    fn trimWhitespace(arg: []const u8) []const u8 {
+        return std.mem.trim(u8, arg, " \n\t\r");
+    }
+
+    fn tryParseOption(self: *ArgParser, comptime T: type) !bool {
+        if (self.reader == null or self.reader.?.peek() == null) {
+            // Return true to mean that we're done rather than false which
+            // would indicate some type of error.
+            return true;
+        }
+
+        // Q: Is there an easy way to use comptime to construct the right field name?
+        var option_list: []option(T) = undefined;
+        if (T == i32) {
+            option_list = self.option_i32.items;
+        } else if (T == bool) {
+            option_list = self.option_bool.items;
+        } else {
+            // unsupported type
+            @compileError("Unsupported option type " ++ @typeName(T));
+        }
+
+        const arg = self.reader.?.peek().?;
+
+        for (option_list) |*op| {
+            if (op.match(arg)) {
+                // We've found a match, now attempt to parse the option value (assume arity of 1)
+                _ = self.reader.?.next();
+                const argValue: ?[]const u8 = self.reader.?.peek();
+                if (argValue == null) {
+                    // No args found, but we were expecting at least 1
+                    std.log.err("Argument missing for option {s}", .{arg});
+                    return error.MissingArgument;
+                }
+                try op.parse(argValue.?);
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    pub fn printHelp(self: *ArgParser) void {
+        _ = self;
+        @panic("unimplemented");
     }
 
     pub fn init(allocator: Allocator) ArgParser {
-        var parser = .{ .allocator = allocator };
-        parser.options = ArrayList(option(undefined)).init(allocator);
-        return parser;
+        return .{
+            .allocator = allocator,
+            .option_i32 = ArrayList(option(i32)).init(allocator),
+            .option_bool = ArrayList(option(bool)).init(allocator),
+        };
     }
 
     pub fn deinit(self: *ArgParser) void {
-        self.options.deinit();
+        for (self.option_i32.items) |*op| {
+            op.deinit();
+        }
+        self.option_i32.deinit();
+        for (self.option_bool.items) |*op| {
+            op.deinit();
+        }
+        self.option_bool.deinit();
+        if (self.reader) |*reader| {
+            reader.deinit();
+        }
     }
 };
+
+test "ArgParser" {
+    var parser = ArgParser.init(t.allocator);
+    defer parser.deinit();
+
+    const arg_str = "--boop\x0042\x00-y\x001\x00";
+    const data = try _test_input_args(arg_str);
+    parser.reader = ArgReader{
+        .allocator = t.allocator,
+        .args = data,
+        .current = 0,
+    };
+    defer parser.reader = null;
+
+    var dest: i32 = 0;
+    var dest_bool: bool = undefined;
+
+    try parser.addFlag(i32, "-b", "--boop", "number of times booped", &dest);
+    try parser.addFlag(bool, "-y", "--yes", "yes is true", &dest_bool);
+
+    try parser.parse();
+    try t.expectEqual(42, dest);
+    try t.expectEqual(true, dest_bool);
+}
 
 //--------------------------------------------------------------------------------
 // `option` struct
@@ -81,15 +164,18 @@ fn option(comptime T: type) type {
         // Flag names in the format of "--long-name" or "-s"
         long_name: ?ArrayList(u8) = null,
         short_name: ?ArrayList(u8) = null,
+        description: ?ArrayList(u8) = null,
 
         const Self = @This();
 
-        pub fn parse(self: *Self, arg: []const u8) !void {
+        fn parse(self: *Self, arg: []const u8) !void {
             // Use the comptime type for the option to delegate to the correct parsing function
             comptime var parse_fn: *const fn ([]const u8, *T) anyerror!void = undefined;
             comptime {
                 if (T == i32) {
                     parse_fn = parse_i32;
+                } else if (T == bool) {
+                    parse_fn = parse_bool;
                 } else {
                     // unsupported type
                     @compileError("Unsupported option type " ++ @typeName(T));
@@ -98,22 +184,45 @@ fn option(comptime T: type) type {
             try parse_fn(arg, self.receiver);
         }
 
-        pub fn with_long_name(self: *Self, name: []const u8) !void {
+        fn with_long_name(self: *Self, name: []const u8) !void {
             self.long_name = ArrayList(u8).init(self.allocator);
             try self.long_name.?.appendSlice(name);
         }
 
-        pub fn with_short_name(self: *Self, name: []const u8) !void {
+        fn with_short_name(self: *Self, name: []const u8) !void {
             self.short_name = ArrayList(u8).init(self.allocator);
             try self.short_name.?.appendSlice(name);
         }
 
-        pub fn deinit(self: *Self) void {
+        fn with_description(self: *Self, desc: []const u8) !void {
+            self.description = ArrayList(u8).init(self.allocator);
+            try self.description.?.appendSlice(desc);
+        }
+
+        fn match(self: *Self, arg: []const u8) bool {
+            if (self.long_name) |name| {
+                if (std.mem.eql(u8, name.items, arg)) {
+                    return true;
+                }
+            }
+            if (self.short_name) |name| {
+                if (std.mem.eql(u8, name.items, arg)) {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        fn deinit(self: *Self) void {
             if (self.long_name) |name| {
                 name.deinit();
             }
             if (self.short_name) |name| {
                 name.deinit();
+            }
+            if (self.description) |desc| {
+                desc.deinit();
             }
         }
     };
@@ -128,23 +237,29 @@ test "i32 option" {
 
     try op.with_short_name("-u");
     try op.with_long_name("--boop");
-    try op.parse("64");
 
+    try op.parse("64");
     try t.expectEqual(64, receiver);
+
+    try op.parse("-64");
+    try t.expectEqual(-64, receiver);
 }
 
 //--------------------------------------------------------------------------------
 // Parsing functions
 
 fn parse_i32(arg: []const u8, dest: *i32) !void {
-    var value: i32 = 0;
-    for (arg) |c| {
-        if (c < '0' or c > '9') {
-            return error.InvalidInteger;
-        }
-        value = value * 10 + (c - '0');
+    dest.* = try std.fmt.parseInt(i32, arg, 10);
+}
+
+fn parse_bool(arg: []const u8, dest: *bool) !void {
+    if (std.mem.eql(u8, "true", arg) or std.mem.eql(u8, "1", arg)) {
+        dest.* = true;
+    } else if (std.mem.eql(u8, "false", arg) or std.mem.eql(u8, "0", arg)) {
+        dest.* = false;
+    } else {
+        return error.InvalidArgument;
     }
-    dest.* = value;
 }
 
 //--------------------------------------------------------------------------------
@@ -160,9 +275,11 @@ pub const ArgReader = struct {
         return .{ .allocator = allocator };
     }
 
-    pub fn read(self: *ArgReader) !*ArgReader {
-        self.args = try std.process.argsAlloc(self.allocator);
-        return self;
+    pub fn read(self: *ArgReader) !void {
+        // only perform a read if we don't have data in args
+        if (self.args == null) {
+            self.args = try std.process.argsAlloc(self.allocator);
+        }
     }
 
     pub fn peek(self: *ArgReader) ?[:0]u8 {
@@ -195,8 +312,6 @@ pub const ArgReader = struct {
         }
     }
 };
-
-const t = std.testing;
 
 test "ArgReader init/deinit" {
     var reader = ArgReader.init(t.allocator);
@@ -274,7 +389,7 @@ test "it's an iterator too!" {
     };
     var i: u8 = 1;
     while (reader.next()) |arg| {
-        const buf = "arg" ++ [_]u8{i + 48};
+        const buf = "arg" ++ [_]u8{i + '0'};
         try t.expectEqualStrings(buf, arg);
         i += 1;
     }
