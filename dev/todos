@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+
+#--------------------------------------------------
+# List all TODO like comments in the project
+#
+
+set -euo pipefail
+
+DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
+
+rg '^\s*///?\s*(TODO|HACK|NOTE|FIXME|XXX|INFO|WARN)(\b|:)' -g '**/*.zig' "${DIR}/.."
