@@ -22,7 +22,7 @@ fn main() !void {
     try parser.parse();
 
     if (verbose) {
-        std.debug.print("Your favorite number is {}\n", .{favorite_number});
+        std.debug.print("Your favorite number is {d}\n", .{favorite_number});
     }
 }
 ```
