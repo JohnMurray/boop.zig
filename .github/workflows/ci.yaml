@@ -18,7 +18,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        zig: [0.13.0, "master"]
+        zig: ["master"]
         os: [ubuntu-latest, macos-latest]
     name: Zig ${{ matrix.zig }} on ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
