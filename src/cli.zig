@@ -3,12 +3,19 @@ const t = std.testing;
 const Allocator = std.mem.Allocator;
 const ArrayList = std.ArrayList;
 
+/// ArgParser is a simple command line argument parser in the style of Go's flag package. It is
+/// minimal in the sense that it may not support all features you would find in a standalone
+/// argument parsing library.
+///
+/// See docs/cli.md for more information on how to use this utility.
 pub const ArgParser = struct {
     allocator: Allocator,
 
     option_i32: ArrayList(option(i32)) = undefined,
     option_bool: ArrayList(option(bool)) = undefined,
 
+    // Optional reader assigned as a field to allow for easier testing. Otherwise this could simply be
+    // a local variable in the 'parse' function.
     reader: ?ArgReader = null,
 
     // Add a flag to the parser. 'T' is used to determine the type of the flag and there are only certain supported
@@ -33,14 +40,12 @@ pub const ArgParser = struct {
         }
     }
 
-    // pub fn addStringFlag
-
     pub fn parse(self: *ArgParser) !void {
         if (self.reader == null) {
             self.reader = ArgReader.init(self.allocator);
         }
 
-        // TODO: iterate over the reader and parse the arguments
+        // iterate over the reader and parse the arguments
         try self.reader.?.read();
         while (self.reader.?.peek() != null) {
             if (try self.tryParseOption(i32) or try self.tryParseOption(bool)) {
@@ -52,6 +57,7 @@ pub const ArgParser = struct {
                 break;
             }
         }
+        // TODO: handle the remaining, non-option arguments
     }
 
     fn trimWhitespace(arg: []const u8) []const u8 {
