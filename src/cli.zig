@@ -323,6 +323,29 @@ test "i32 option" {
     try t.expectEqual(-64, receiver);
 }
 
+test "bool option" {
+    const bool_op = option(bool);
+
+    var receiver: bool = false;
+    var op = bool_op{ .allocator = t.allocator, .receiver = &receiver };
+    defer op.deinit();
+
+    try op.with_short_name("-u");
+    try op.with_long_name("--boop");
+
+    try op.parse("true");
+    try t.expectEqual(true, receiver);
+
+    try op.parse("1");
+    try t.expectEqual(true, receiver);
+
+    try op.parse("false");
+    try t.expectEqual(false, receiver);
+
+    try op.parse("0");
+    try t.expectEqual(false, receiver);
+}
+
 //--------------------------------------------------------------------------------
 // Parsing functions
 
