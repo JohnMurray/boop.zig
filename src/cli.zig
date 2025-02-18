@@ -11,6 +11,9 @@ const ArrayList = std.ArrayList;
 pub const ArgParser = struct {
     allocator: Allocator,
 
+    cli_name: ?[]const u8 = null,
+    cli_description: ?[]const u8 = null,
+
     option_i32: ArrayList(option(i32)) = undefined,
     option_bool: ArrayList(option(bool)) = undefined,
 
@@ -48,6 +51,10 @@ pub const ArgParser = struct {
         // iterate over the reader and parse the arguments
         try self.reader.?.read();
         while (self.reader.?.peek() != null) {
+            if (isHelpFlag(self.reader.?.peek().?)) {
+                self.printHelp();
+                return;
+            }
             if (try self.tryParseOption(i32) or try self.tryParseOption(bool)) {
                 // we've parsed an option, continue to the next argument
                 _ = self.reader.?.next();
@@ -102,9 +109,43 @@ pub const ArgParser = struct {
         return false;
     }
 
+    fn isHelpFlag(arg: []const u8) bool {
+        return std.mem.eql(u8, arg, "--help") or std.mem.eql(u8, arg, "-h");
+    }
+
     pub fn printHelp(self: *ArgParser) void {
-        _ = self;
-        @panic("unimplemented");
+        std.Progress.lockStdErr();
+        defer std.Progress.unlockStdErr();
+        const stderr = std.io.getStdErr().writer();
+
+        var name: []const u8 = "program";
+        if (self.cli_name) |n| {
+            name = n;
+        }
+
+        stderr.print("Usage for {s}\n", .{name}) catch {};
+        if (self.cli_description) |desc| {
+            stderr.print("\n{s}\n", .{desc}) catch {};
+        }
+        stderr.print("Options:\n", .{}) catch {};
+        self.printOptionHelp(i32, stderr);
+        self.printOptionHelp(bool, stderr);
+    }
+
+    fn printOptionHelp(self: *ArgParser, comptime T: type, writer: std.fs.File.Writer) void {
+        var option_list: []option(T) = undefined;
+        if (T == i32) {
+            option_list = self.option_i32.items;
+        } else if (T == bool) {
+            option_list = self.option_bool.items;
+        } else {
+            // unsupported type
+            @compileError("Unsupported option type " ++ @typeName(T));
+        }
+
+        for (option_list) |*op| {
+            op.printHelp(writer);
+        }
     }
 
     pub fn init(allocator: Allocator) ArgParser {
@@ -130,7 +171,7 @@ pub const ArgParser = struct {
     }
 };
 
-test "ArgParser" {
+test "ArgParser smoke test" {
     var parser = ArgParser.init(t.allocator);
     defer parser.deinit();
 
@@ -152,6 +193,22 @@ test "ArgParser" {
     try parser.parse();
     try t.expectEqual(42, dest);
     try t.expectEqual(true, dest_bool);
+}
+
+test "ArgParser --help" {
+    var parser = ArgParser.init(t.allocator);
+    defer parser.deinit();
+
+    const arg_str = "--help\x00";
+    const data = try _test_input_args(arg_str);
+    parser.reader = ArgReader{
+        .allocator = t.allocator,
+        .args = data,
+        .current = 0,
+    };
+    defer parser.reader = null;
+
+    try parser.parse();
 }
 
 //--------------------------------------------------------------------------------
@@ -218,6 +275,21 @@ fn option(comptime T: type) type {
             }
 
             return false;
+        }
+
+        fn printHelp(self: *Self, writer: std.fs.File.Writer) void {
+            if (self.long_name) |name| {
+                writer.print("  --{s}", .{name.items}) catch {};
+                if (self.short_name != null) {
+                    writer.print("|", .{}) catch {};
+                }
+            }
+            if (self.short_name) |name| {
+                writer.print("-{s}", .{name.items}) catch {};
+            }
+            if (self.description) |desc| {
+                writer.print("  {s}", .{desc.items}) catch {};
+            }
         }
 
         fn deinit(self: *Self) void {
