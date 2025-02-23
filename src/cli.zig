@@ -28,9 +28,9 @@ pub const ArgParser = struct {
     pub const InitOptions = struct {
         /// The name of the program, to be used in the help output
         /// If not provided, the program name will be discovered from the first argument
-        cli_name: ?[]const u8,
+        cli_name: ?[]const u8 = null,
         /// A description of the program, to be used in the help output
-        cli_description: ?[]const u8,
+        cli_description: ?[]const u8 = null,
     };
 
     // Add a flag to the parser. 'T' is used to determine the type of the flag and there are only certain supported
@@ -195,10 +195,10 @@ pub const ArgParser = struct {
 };
 
 test "ArgParser smoke test" {
-    var parser = ArgParser.init(t.allocator);
+    var parser = ArgParser.init(t.allocator, .{});
     defer parser.deinit();
 
-    const arg_str = "--boop\x0042\x00-y\x001\x00";
+    const arg_str = "PROG\x00--boop\x0042\x00-y\x001\x00";
     const data = try _test_input_args(arg_str);
     parser.reader = ArgReader{
         .allocator = t.allocator,
