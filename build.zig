@@ -1,4 +1,5 @@
 const std = @import("std");
+const Module = std.Build.Module;
 
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
@@ -26,12 +27,18 @@ pub fn build(b: *std.Build) void {
     test_step.dependOn(&run_lib_unit_tests.step);
 
     for ((getExampleFiles(b) catch @panic("Failed to get example files")).items) |name| {
-        build_example(b, .{ .name = name, .target = target, .optimize = optimize });
+        build_example(b, .{
+            .name = name,
+            .boop_lib = mod_boop,
+            .target = target,
+            .optimize = optimize,
+        });
     }
 }
 
 const ExampleOpts = struct {
     name: []const u8,
+    boop_lib: *Module,
     target: std.Build.ResolvedTarget,
     optimize: std.builtin.OptimizeMode,
 };
@@ -47,6 +54,8 @@ fn build_example(b: *std.Build, opts: ExampleOpts) void {
         .target = opts.target,
         .optimize = opts.optimize,
     });
+
+    mod_example.addImport("boop", opts.boop_lib);
 
     const exe_example = b.addExecutable(.{
         .name = b.fmt("example_{s}", .{opts.name}),
