@@ -59,7 +59,7 @@ fn build_example(b: *std.Build, opts: ExampleOpts) void {
 /// Returns an arraylist of all files in "exampes/" directory, which is a directory under the
 /// current working directory.
 fn getExampleFiles(b: *std.Build) !std.ArrayList([]u8) {
-    var dir = try std.fs.cwd().openDir("examples", .{});
+    var dir = try std.fs.cwd().openDir("examples", .{ .iterate = true });
     defer dir.close();
     var it = dir.iterate();
 
