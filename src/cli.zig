@@ -14,12 +14,24 @@ pub const ArgParser = struct {
     cli_name: ?[]const u8 = null,
     cli_description: ?[]const u8 = null,
 
+    // If the user doesn't provide a CLI name, we can discover the name when parsing initial arguments
+    found_name: ?[]const u8 = null,
+
     option_i32: ArrayList(option(i32)) = undefined,
     option_bool: ArrayList(option(bool)) = undefined,
 
     // Optional reader assigned as a field to allow for easier testing. Otherwise this could simply be
     // a local variable in the 'parse' function.
     reader: ?ArgReader = null,
+
+    /// Additional initialization options for ArgParser.init
+    pub const InitOptions = struct {
+        /// The name of the program, to be used in the help output
+        /// If not provided, the program name will be discovered from the first argument
+        cli_name: ?[]const u8,
+        /// A description of the program, to be used in the help output
+        cli_description: ?[]const u8,
+    };
 
     // Add a flag to the parser. 'T' is used to determine the type of the flag and there are only certain supported
     // types. A destination must be provided to store the value of the flag. Strings aren't supported here. Use the
@@ -50,10 +62,17 @@ pub const ArgParser = struct {
 
         // iterate over the reader and parse the arguments
         try self.reader.?.read();
-        while (self.reader.?.peek() != null) {
+        var i: usize = 0;
+        while (self.reader.?.peek() != null) : (i += 1) {
+            if (i == 0) {
+                // The first argument is the program name
+                self.found_name = self.reader.?.next();
+                continue;
+            }
+
             if (isHelpFlag(self.reader.?.peek().?)) {
                 self.printHelp();
-                return;
+                return error.PrintHelp;
             }
             if (try self.tryParseOption(i32) or try self.tryParseOption(bool)) {
                 // we've parsed an option, continue to the next argument
@@ -118,8 +137,10 @@ pub const ArgParser = struct {
         defer std.Progress.unlockStdErr();
         const stderr = std.io.getStdErr().writer();
 
-        var name: []const u8 = "program";
+        var name: []const u8 = "PROGRAM";
         if (self.cli_name) |n| {
+            name = n;
+        } else if (self.found_name) |n| {
             name = n;
         }
 
@@ -127,7 +148,7 @@ pub const ArgParser = struct {
         if (self.cli_description) |desc| {
             stderr.print("\n{s}\n", .{desc}) catch {};
         }
-        stderr.print("Options:\n", .{}) catch {};
+        stderr.print("\nOptions:\n", .{}) catch {};
         self.printOptionHelp(i32, stderr);
         self.printOptionHelp(bool, stderr);
     }
@@ -148,11 +169,13 @@ pub const ArgParser = struct {
         }
     }
 
-    pub fn init(allocator: Allocator) ArgParser {
+    pub fn init(allocator: Allocator, options: InitOptions) ArgParser {
         return .{
             .allocator = allocator,
             .option_i32 = ArrayList(option(i32)).init(allocator),
             .option_bool = ArrayList(option(bool)).init(allocator),
+            .cli_name = options.cli_name,
+            .cli_description = options.cli_description,
         };
     }
 
@@ -196,7 +219,7 @@ test "ArgParser smoke test" {
 }
 
 test "ArgParser --help" {
-    var parser = ArgParser.init(t.allocator);
+    var parser = ArgParser.init(t.allocator, .{});
     defer parser.deinit();
 
     const arg_str = "--help\x00";
@@ -279,17 +302,18 @@ fn option(comptime T: type) type {
 
         fn printHelp(self: *Self, writer: std.fs.File.Writer) void {
             if (self.long_name) |name| {
-                writer.print("  --{s}", .{name.items}) catch {};
+                writer.print("  {s}", .{name.items}) catch {};
                 if (self.short_name != null) {
                     writer.print("|", .{}) catch {};
                 }
             }
             if (self.short_name) |name| {
-                writer.print("-{s}", .{name.items}) catch {};
+                writer.print("{s}", .{name.items}) catch {};
             }
             if (self.description) |desc| {
                 writer.print("  {s}", .{desc.items}) catch {};
             }
+            writer.print("\n", .{}) catch {};
         }
 
         fn deinit(self: *Self) void {
