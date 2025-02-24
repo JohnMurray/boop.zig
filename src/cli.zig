@@ -6,8 +6,6 @@ const ArrayList = std.ArrayList;
 /// ArgParser is a simple command line argument parser in the style of Go's flag package. It is
 /// minimal in the sense that it may not support all features you would find in a standalone
 /// argument parsing library.
-///
-/// See docs/cli.md for more information on how to use this utility.
 pub const ArgParser = struct {
     allocator: Allocator,
 
