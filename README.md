@@ -8,7 +8,7 @@ __boop__
 
 A miscellaneous collection of utils and tools for Zig. You probably won't find anything useful here.
 
-See [docs folder](https://github.com/JohnMurray/boop.zig/blob/main/docs) for per-module info.
+See [examples folder](https://github.com/JohnMurray/boop.zig/blob/main/examples) for working examples.
 
 ## License
 
