@@ -86,10 +86,6 @@ pub const ArgParser = struct {
         // TODO: handle the remaining, non-option arguments
     }
 
-    fn trimWhitespace(arg: []const u8) []const u8 {
-        return std.mem.trim(u8, arg, " \n\t\r");
-    }
-
     fn tryParseOption(self: *ArgParser, comptime T: type) !bool {
         if (self.reader == null or self.reader.?.peek() == null) {
             // Return true to mean that we're done rather than false which
@@ -110,11 +106,30 @@ pub const ArgParser = struct {
 
         const arg = self.reader.?.peek().?;
 
+        // If the arg contains an '=' sign, we need to split the arg into the flag and value
+        var flag: []const u8 = undefined;
+        var value: ?[]const u8 = null;
+        const split = std.mem.indexOf(u8, arg, "=");
+        if (split) |s| {
+            flag = arg[0..s];
+            value = arg[s + 1 ..];
+        } else {
+            flag = arg;
+        }
+
         for (option_list) |*op| {
-            if (op.match(arg)) {
-                // We've found a match, now attempt to parse the option value (assume arity of 1)
-                _ = self.reader.?.next();
-                const argValue: ?[]const u8 = self.reader.?.peek();
+            if (op.match(flag)) {
+                // We've matched on the arg. Now we need to process a value for the option. This will
+                // either be the next argument or the value after the '=' sign.
+                var argValue: ?[]const u8 = null;
+                if (value) |v| {
+                    argValue = v;
+                } else {
+                    // There was no value after the '=' sign, so we need to advance to the next argument
+                    _ = self.reader.?.next();
+                    argValue = self.reader.?.peek();
+                }
+
                 if (argValue == null) {
                     // No args found, but we were expecting at least 1
                     std.log.err("Argument missing for option {s}", .{arg});
