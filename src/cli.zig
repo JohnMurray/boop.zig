@@ -15,6 +15,7 @@ pub const ArgParser = struct {
     // If the user doesn't provide a CLI name, we can discover the name when parsing initial arguments
     found_name: ?[]const u8 = null,
 
+    // TODO: Is there a way to use meta-programming to generate these fields?
     option_i8: ArrayList(option(i8)) = undefined,
     option_i16: ArrayList(option(i16)) = undefined,
     option_i32: ArrayList(option(i32)) = undefined,
@@ -197,6 +198,7 @@ pub const ArgParser = struct {
     }
 
     pub fn init(allocator: Allocator, options: InitOptions) ArgParser {
+        // TODO: Is there a way to use meta-programming to initialize these fields?
         return .{
             .allocator = allocator,
             .option_i8 = ArrayList(option(i8)).init(allocator),
