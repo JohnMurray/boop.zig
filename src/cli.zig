@@ -15,7 +15,16 @@ pub const ArgParser = struct {
     // If the user doesn't provide a CLI name, we can discover the name when parsing initial arguments
     found_name: ?[]const u8 = null,
 
+    option_i8: ArrayList(option(i8)) = undefined,
+    option_i16: ArrayList(option(i16)) = undefined,
     option_i32: ArrayList(option(i32)) = undefined,
+    option_i64: ArrayList(option(i64)) = undefined,
+    option_u8: ArrayList(option(u8)) = undefined,
+    option_u16: ArrayList(option(u16)) = undefined,
+    option_u32: ArrayList(option(u32)) = undefined,
+    option_u64: ArrayList(option(u64)) = undefined,
+    option_f32: ArrayList(option(f32)) = undefined,
+    option_f64: ArrayList(option(f64)) = undefined,
     option_bool: ArrayList(option(bool)) = undefined,
 
     // Optional reader assigned as a field to allow for easier testing. Otherwise this could simply be
@@ -43,14 +52,7 @@ pub const ArgParser = struct {
         try op.with_short_name(short);
         try op.with_description(description);
 
-        if (T == i32) {
-            try self.option_i32.append(op);
-        } else if (T == bool) {
-            try self.option_bool.append(op);
-        } else {
-            // unsupported type
-            @compileError("Unsupported option type " ++ @typeName(T));
-        }
+        try @field(self, "option_" ++ @typeName(T)).append(op);
     }
 
     pub fn parse(self: *ArgParser) !void {
@@ -72,7 +74,18 @@ pub const ArgParser = struct {
                 self.printHelp();
                 return error.PrintHelp;
             }
-            if (try self.tryParseOption(i32) or try self.tryParseOption(bool)) {
+            if (try self.tryParseOption(i8) or
+                try self.tryParseOption(i16) or
+                try self.tryParseOption(i32) or
+                try self.tryParseOption(i64) or
+                try self.tryParseOption(u8) or
+                try self.tryParseOption(u16) or
+                try self.tryParseOption(u32) or
+                try self.tryParseOption(u64) or
+                try self.tryParseOption(f32) or
+                try self.tryParseOption(f64) or
+                try self.tryParseOption(bool))
+            {
                 // we've parsed an option, continue to the next argument
                 _ = self.reader.?.next();
                 continue;
@@ -92,14 +105,15 @@ pub const ArgParser = struct {
         }
 
         // Q: Is there an easy way to use comptime to construct the right field name?
-        var option_list: []option(T) = undefined;
-        if (T == i32) {
-            option_list = self.option_i32.items;
-        } else if (T == bool) {
-            option_list = self.option_bool.items;
-        } else {
-            // unsupported type
-            @compileError("Unsupported option type " ++ @typeName(T));
+        // var option_list: []option(T) = undefined;
+        // const fi = std.meta.fieldIndex(*ArgParser, "option_" ++ @typeName(T)) orelse @panic("No field found for type " ++ @typeName(T));
+        // std.meta.fields(*ArgParser)[fi];
+        const option_list: []option(T) = @field(self, "option_" ++ @typeName(T)).items;
+
+        // Exit early if the option list is empty
+        if (option_list.len == 0) {
+            // No options to parse
+            return false;
         }
 
         const arg = self.reader.?.peek().?;
@@ -185,7 +199,16 @@ pub const ArgParser = struct {
     pub fn init(allocator: Allocator, options: InitOptions) ArgParser {
         return .{
             .allocator = allocator,
+            .option_i8 = ArrayList(option(i8)).init(allocator),
+            .option_i16 = ArrayList(option(i16)).init(allocator),
             .option_i32 = ArrayList(option(i32)).init(allocator),
+            .option_i64 = ArrayList(option(i64)).init(allocator),
+            .option_u8 = ArrayList(option(u8)).init(allocator),
+            .option_u16 = ArrayList(option(u16)).init(allocator),
+            .option_u32 = ArrayList(option(u32)).init(allocator),
+            .option_u64 = ArrayList(option(u64)).init(allocator),
+            .option_f32 = ArrayList(option(f32)).init(allocator),
+            .option_f64 = ArrayList(option(f64)).init(allocator),
             .option_bool = ArrayList(option(bool)).init(allocator),
             .cli_name = options.cli_name,
             .cli_description = options.cli_description,
@@ -193,10 +216,46 @@ pub const ArgParser = struct {
     }
 
     pub fn deinit(self: *ArgParser) void {
+        for (self.option_i8.items) |*op| {
+            op.deinit();
+        }
+        self.option_i8.deinit();
+        for (self.option_i16.items) |*op| {
+            op.deinit();
+        }
+        self.option_i16.deinit();
         for (self.option_i32.items) |*op| {
             op.deinit();
         }
         self.option_i32.deinit();
+        for (self.option_i64.items) |*op| {
+            op.deinit();
+        }
+        self.option_i64.deinit();
+        for (self.option_u8.items) |*op| {
+            op.deinit();
+        }
+        self.option_u8.deinit();
+        for (self.option_u16.items) |*op| {
+            op.deinit();
+        }
+        self.option_u16.deinit();
+        for (self.option_u32.items) |*op| {
+            op.deinit();
+        }
+        self.option_u32.deinit();
+        for (self.option_u64.items) |*op| {
+            op.deinit();
+        }
+        self.option_u64.deinit();
+        for (self.option_f32.items) |*op| {
+            op.deinit();
+        }
+        self.option_f32.deinit();
+        for (self.option_f64.items) |*op| {
+            op.deinit();
+        }
+        self.option_f64.deinit();
         for (self.option_bool.items) |*op| {
             op.deinit();
         }
@@ -211,7 +270,18 @@ test "ArgParser smoke test" {
     var parser = ArgParser.init(t.allocator, .{});
     defer parser.deinit();
 
-    const arg_str = "PROG\x00--boop\x0042\x00-y\x001\x00";
+    const arg_str = "PROG\x00" ++
+        "--i8\x008\x00" ++
+        "--i16\x0016\x00" ++
+        "--i32\x0032\x00" ++
+        "--i64\x0064\x00" ++
+        "--u8\x008\x00" ++
+        "--u16\x0016\x00" ++
+        "--u32\x0032\x00" ++
+        "--u64\x0064\x00" ++
+        "--f32\x0032.0\x00" ++
+        "--f64\x0064.0\x00" ++
+        "-y\x001\x00";
     const data = try _test_input_args(arg_str);
     parser.reader = ArgReader{
         .allocator = t.allocator,
@@ -220,15 +290,44 @@ test "ArgParser smoke test" {
     };
     defer parser.reader = null;
 
-    var dest: i32 = 0;
-    var dest_bool: bool = undefined;
+    var i8_dest: i8 = 0;
+    var i16_dest: i16 = 0;
+    var i32_dest: i32 = 0;
+    var i64_dest: i64 = 0;
+    var u8_dest: u8 = 0;
+    var u16_dest: u16 = 0;
+    var u32_dest: u32 = 0;
+    var u64_dest: u64 = 0;
+    var f32_dest: f32 = 0.0;
+    var f64_dest: f64 = 0.0;
 
-    try parser.addFlag(i32, "-b", "--boop", "number of times booped", &dest);
-    try parser.addFlag(bool, "-y", "--yes", "yes is true", &dest_bool);
+    var bool_dest: bool = undefined;
+
+    try parser.addFlag(i8, "-a", "--i8", "boop", &i8_dest);
+    try parser.addFlag(i16, "-b", "--i16", "boop", &i16_dest);
+    try parser.addFlag(i32, "-c", "--i32", "number of times booped", &i32_dest);
+    try parser.addFlag(i64, "-d", "--i64", "boop", &i64_dest);
+    try parser.addFlag(u8, "-e", "--u8", "boop", &u8_dest);
+    try parser.addFlag(u16, "-f", "--u16", "boop", &u16_dest);
+    try parser.addFlag(u32, "-g", "--u32", "boop", &u32_dest);
+    try parser.addFlag(u64, "-h", "--u64", "boop", &u64_dest);
+    try parser.addFlag(f32, "-i", "--f32", "boop", &f32_dest);
+    try parser.addFlag(f64, "-j", "--f64", "boop", &f64_dest);
+
+    try parser.addFlag(bool, "-y", "--yes", "yes is true", &bool_dest);
 
     try parser.parse();
-    try t.expectEqual(42, dest);
-    try t.expectEqual(true, dest_bool);
+    try t.expectEqual(8, i8_dest);
+    try t.expectEqual(16, i16_dest);
+    try t.expectEqual(32, i32_dest);
+    try t.expectEqual(64, i64_dest);
+    try t.expectEqual(8, u8_dest);
+    try t.expectEqual(16, u16_dest);
+    try t.expectEqual(32, u32_dest);
+    try t.expectEqual(64, u64_dest);
+    try t.expectEqual(32.0, f32_dest);
+    try t.expectEqual(64.0, f64_dest);
+    try t.expectEqual(true, bool_dest);
 }
 
 test "ArgParser --help" {
@@ -271,8 +370,26 @@ fn option(comptime T: type) type {
             // Use the comptime type for the option to delegate to the correct parsing function
             comptime var parse_fn: *const fn ([]const u8, *T) anyerror!void = undefined;
             comptime {
-                if (T == i32) {
+                if (T == i8) {
+                    parse_fn = parse_i8;
+                } else if (T == i16) {
+                    parse_fn = parse_i16;
+                } else if (T == i32) {
                     parse_fn = parse_i32;
+                } else if (T == i64) {
+                    parse_fn = parse_i64;
+                } else if (T == u8) {
+                    parse_fn = parse_u8;
+                } else if (T == u16) {
+                    parse_fn = parse_u16;
+                } else if (T == u32) {
+                    parse_fn = parse_u32;
+                } else if (T == u64) {
+                    parse_fn = parse_u64;
+                } else if (T == f32) {
+                    parse_fn = parse_f32;
+                } else if (T == f64) {
+                    parse_fn = parse_f64;
                 } else if (T == bool) {
                     parse_fn = parse_bool;
                 } else {
@@ -343,21 +460,111 @@ fn option(comptime T: type) type {
     };
 }
 
-test "i32 option" {
+test "i8/16/32/64 option" {
+    const i8_op = option(i8);
+    const i16_op = option(i16);
     const i32_op = option(i32);
+    const i64_op = option(i64);
 
-    var receiver: i32 = 0;
-    var op = i32_op{ .allocator = t.allocator, .receiver = &receiver };
-    defer op.deinit();
+    var receiver_i8: i8 = 0;
+    var receiver_i16: i16 = 0;
+    var receiver_i32: i32 = 0;
+    var receiver_i64: i64 = 0;
 
-    try op.with_short_name("-u");
-    try op.with_long_name("--boop");
+    {
+        var op = i8_op{ .allocator = t.allocator, .receiver = &receiver_i8 };
+        defer op.deinit();
+        try op.parse("64");
+        try t.expectEqual(64, receiver_i8);
+        try op.parse("-64");
+        try t.expectEqual(-64, receiver_i8);
+    }
+    {
+        var op = i16_op{ .allocator = t.allocator, .receiver = &receiver_i16 };
+        defer op.deinit();
+        try op.parse("64");
+        try t.expectEqual(64, receiver_i16);
+        try op.parse("-64");
+        try t.expectEqual(-64, receiver_i16);
+    }
+    {
+        var op = i32_op{ .allocator = t.allocator, .receiver = &receiver_i32 };
+        defer op.deinit();
+        try op.parse("64");
+        try t.expectEqual(64, receiver_i32);
+        try op.parse("-64");
+        try t.expectEqual(-64, receiver_i32);
+    }
+    {
+        var op = i64_op{ .allocator = t.allocator, .receiver = &receiver_i64 };
+        defer op.deinit();
+        try op.parse("64");
+        try t.expectEqual(64, receiver_i64);
+        try op.parse("-64");
+        try t.expectEqual(-64, receiver_i64);
+    }
+}
 
-    try op.parse("64");
-    try t.expectEqual(64, receiver);
+test "u8/16/32/64 option" {
+    const u8_op = option(u8);
+    const u16_op = option(u16);
+    const u32_op = option(u32);
+    const u64_op = option(u64);
 
-    try op.parse("-64");
-    try t.expectEqual(-64, receiver);
+    var receiver_u8: u8 = 0;
+    var receiver_u16: u16 = 0;
+    var receiver_u32: u32 = 0;
+    var receiver_u64: u64 = 0;
+
+    {
+        var op = u8_op{ .allocator = t.allocator, .receiver = &receiver_u8 };
+        defer op.deinit();
+        try op.parse("64");
+        try t.expectEqual(64, receiver_u8);
+    }
+    {
+        var op = u16_op{ .allocator = t.allocator, .receiver = &receiver_u16 };
+        defer op.deinit();
+        try op.parse("64");
+        try t.expectEqual(64, receiver_u16);
+    }
+    {
+        var op = u32_op{ .allocator = t.allocator, .receiver = &receiver_u32 };
+        defer op.deinit();
+        try op.parse("64");
+        try t.expectEqual(64, receiver_u32);
+    }
+    {
+        var op = u64_op{ .allocator = t.allocator, .receiver = &receiver_u64 };
+        defer op.deinit();
+        try op.parse("64");
+        try t.expectEqual(64, receiver_u64);
+    }
+}
+
+test "f32/64 option" {
+    const f32_op = option(f32);
+    const f64_op = option(f64);
+
+    var receiver_f32: f32 = 0.0;
+    var receiver_f64: f64 = 0.0;
+
+    {
+        var op = f32_op{ .allocator = t.allocator, .receiver = &receiver_f32 };
+        defer op.deinit();
+        try op.parse("64.0");
+        try t.expectEqual(64.0, receiver_f32);
+        try op.parse("-64.0");
+        try t.expectEqual(-64.0, receiver_f32);
+    }
+    {
+        var op = f64_op{ .allocator = t.allocator, .receiver = &receiver_f64 };
+        defer op.deinit();
+        try op.parse("64.0");
+        try t.expectEqual(64.0, receiver_f64);
+        try op.parse("-64.0");
+        try t.expectEqual(-64.0, receiver_f64);
+    }
 }
 
 test "bool option" {
@@ -386,8 +593,44 @@ test "bool option" {
 //--------------------------------------------------------------------------------
 // Parsing functions
 
+fn parse_i8(arg: []const u8, dest: *i8) !void {
+    dest.* = try std.fmt.parseInt(i8, arg, 10);
+}
+
+fn parse_i16(arg: []const u8, dest: *i16) !void {
+    dest.* = try std.fmt.parseInt(i16, arg, 10);
+}
+
 fn parse_i32(arg: []const u8, dest: *i32) !void {
     dest.* = try std.fmt.parseInt(i32, arg, 10);
+}
+
+fn parse_i64(arg: []const u8, dest: *i64) !void {
+    dest.* = try std.fmt.parseInt(i64, arg, 10);
+}
+
+fn parse_u8(arg: []const u8, dest: *u8) !void {
+    dest.* = try std.fmt.parseInt(u8, arg, 10);
+}
+
+fn parse_u16(arg: []const u8, dest: *u16) !void {
+    dest.* = try std.fmt.parseInt(u16, arg, 10);
+}
+
+fn parse_u32(arg: []const u8, dest: *u32) !void {
+    dest.* = try std.fmt.parseInt(u32, arg, 10);
+}
+
+fn parse_u64(arg: []const u8, dest: *u64) !void {
+    dest.* = try std.fmt.parseInt(u64, arg, 10);
+}
+
+fn parse_f32(arg: []const u8, dest: *f32) !void {
+    dest.* = try std.fmt.parseFloat(f32, arg);
+}
+
+fn parse_f64(arg: []const u8, dest: *f64) !void {
+    dest.* = try std.fmt.parseFloat(f64, arg);
 }
 
 fn parse_bool(arg: []const u8, dest: *bool) !void {
