@@ -3,6 +3,12 @@ const t = std.testing;
 const Allocator = std.mem.Allocator;
 const ArrayList = std.ArrayList;
 
+const supportedTypes = [_]type{
+    i8,  i16, i32,  i64,
+    u8,  u16, u32,  u64,
+    f32, f64, bool,
+};
+
 /// ArgParser is a simple command line argument parser in the style of Go's flag package. It is
 /// minimal in the sense that it may not support all features you would find in a standalone
 /// argument parsing library.
@@ -75,25 +81,16 @@ pub const ArgParser = struct {
                 self.printHelp();
                 return error.PrintHelp;
             }
-            if (try self.tryParseOption(i8) or
-                try self.tryParseOption(i16) or
-                try self.tryParseOption(i32) or
-                try self.tryParseOption(i64) or
-                try self.tryParseOption(u8) or
-                try self.tryParseOption(u16) or
-                try self.tryParseOption(u32) or
-                try self.tryParseOption(u64) or
-                try self.tryParseOption(f32) or
-                try self.tryParseOption(f64) or
-                try self.tryParseOption(bool))
-            {
-                // we've parsed an option, continue to the next argument
-                _ = self.reader.?.next();
-                continue;
-            } else {
-                // we've found a non-option argument, we're done
-                break;
+            for (supportedTypes) |T| {
+                if (try self.tryParseOption(T)) {
+                    // we've parsed an option, continue to the next argument
+                    _ = self.reader.?.next();
+                    continue;
+                }
             }
+
+            // If we've made it to here, we've failed to parse the option
+            break;
         }
         // TODO: handle the remaining, non-option arguments
     }
